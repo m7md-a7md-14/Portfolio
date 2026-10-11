@@ -110,6 +110,13 @@ h1{font-size:clamp(38px,7vw,68px);line-height:1.05;letter-spacing:-.03em;font-we
 .term-bar span{margin-left:8px;color:var(--muted);font-size:12px}
 .term-body{padding:18px;min-height:170px;white-space:pre-wrap;word-break:break-word}
 .term-body .p{color:var(--ok)}.term-body .o{color:var(--acc)}
+.term-body{max-height:380px;overflow-y:auto}
+.term-body a{color:var(--acc);text-decoration:underline}
+.term-body .m{color:var(--muted)}
+.term-in{display:flex;gap:8px;align-items:center}
+.term-in .p{color:var(--ok)}
+.term-in input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--text);font:inherit;caret-color:var(--acc)}
+.term-in input::placeholder{color:var(--muted);opacity:.7}
 .caret{display:inline-block;width:8px;height:15px;background:var(--acc);vertical-align:-2px;animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 @keyframes pulse{50%{opacity:.45;transform:scale(.8)}}
@@ -271,7 +278,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
       </div>
       <div class="term" aria-label="Terminal introduction">
         <div class="term-bar"><i></i><i></i><i></i><span>zsh: ~/portfolio</span></div>
-        <div class="term-body" id="term" aria-live="off"></div>
+        <div class="term-body" id="termBody"><div id="term"></div><form id="termForm" class="term-in" autocomplete="off" hidden><span class="p">$</span><input id="termIn" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="Terminal: type a command, for example help" placeholder="type help"></form></div>
       </div>
     </div>
   </section>
@@ -653,7 +660,7 @@ $('#contactGrid').innerHTML = contacts.map(([i,l,v,h]) => {
 (async function typeTerm(){
   const el = $('#term'); const sleep = ms => new Promise(r => setTimeout(r, ms));
   if(reduce){
-    el.innerHTML = CONFIG.terminal.map(t => `<span class="p">$</span> ${esc(t.cmd)}\n<span class="o">${esc(t.out)}</span>\n`).join('') + '<span class="p">$</span> <span class="caret"></span>';
+    el.innerHTML = CONFIG.terminal.map(t => `<span class="p">$</span> ${esc(t.cmd)}\n<span class="o">${esc(t.out)}</span>\n`).join(''); initShell();
     return;
   }
   let html = '';
@@ -664,8 +671,76 @@ $('#contactGrid').innerHTML = contacts.map(([i,l,v,h]) => {
     html += `<span class="p">$</span> ${esc(t.cmd)}\n<span class="o">${esc(t.out)}</span>\n`;
     el.innerHTML = html + '<span class="caret"></span>'; await sleep(500);
   }
-  el.innerHTML = html + '<span class="p">$</span> <span class="caret"></span>';
+  el.innerHTML = html; initShell();
 })();
+
+/* ---------- interactive terminal ---------- */
+function initShell(){
+  const out = $('#term'), form = $('#termForm'), inp = $('#termIn'), body = $('#termBody');
+  if(!form || !form.hidden) return;
+  form.hidden = false;
+  const hist = []; let hi = 0;
+  const print = h => { out.insertAdjacentHTML('beforeend', h + '\n'); body.scrollTop = body.scrollHeight; };
+  const o = t => `<span class="o">${t}</span>`;
+  const m = t => `<span class="m">${t}</span>`;
+  const a = (href, txt) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(txt)}</a>`;
+  const wa = `https://wa.me/${CONFIG.whatsapp}`;
+  const openUrl = u => window.open(u, '_blank', 'noopener');
+  const sec = q => { q = (q||'').toLowerCase(); return SECTIONS.find(([id,l]) => id===q || l.toLowerCase()===q); };
+  const contactList = () => [
+    o('email    ') + ' ' + a('mailto:'+CONFIG.email, CONFIG.email),
+    o('linkedin ') + ' ' + a(CONFIG.linkedin, CONFIG.linkedin.replace('https://www.','')),
+    o('github   ') + ' ' + a(CONFIG.github, CONFIG.github.replace('https://','')),
+    o('whatsapp ') + ' ' + a(wa, '+' + CONFIG.whatsapp),
+    o('location ') + ' ' + esc(CONFIG.location)
+  ].join('\n');
+
+  const C = {
+    help:{d:'list all commands', f:() => Object.entries(C).filter(([k,v]) => !v.hide).map(([k,v]) => o(esc(k.padEnd(12))) + esc(v.d)).join('\n')},
+    whoami:{d:'who am I?', f:() => `${o(esc(CONFIG.name))}\n${esc(CONFIG.title)} · ${esc(CONFIG.location)}`},
+    about:{d:'short summary', f:() => esc(CONFIG.summary)},
+    skills:{d:'technical skills', f:() => CONFIG.skills.map(g => o(esc(g.group.padEnd(20))) + esc(g.items.concat((g.learning||[]).map(x => x+' (learning)')).join(', '))).join('\n')},
+    experience:{d:'roles and internships', f:() => CONFIG.experience.concat(CONFIG.internships.slice(0,2)).map(e => `${o(esc(e.date))}  ${esc(e.role)} @ ${esc(e.org)}`).join('\n')},
+    projects:{d:'key projects', f:() => CONFIG.projects.map(p => `${o(esc(p.year))}  ${esc(p.title)} ${m('(' + esc(ct(p.where)) + ')')}`).join('\n')},
+    courses:{d:'courses and training', f:() => CONFIG.courses.map(c => '- ' + esc(c)).join('\n')},
+    contact:{d:'how to reach me', f:contactList},
+    email:{d:'open your mail app', f:() => { location.href = 'mailto:' + CONFIG.email; return 'opening mail app…'; }},
+    message:{d:'message <text>: send me an email', f:arg => { if(!arg) return 'usage: message hello, I would like to talk about…'; location.href = `mailto:${CONFIG.email}?subject=${encodeURIComponent('Message from your portfolio')}&body=${encodeURIComponent(arg)}`; return 'opening mail app with your message…'; }},
+    whatsapp:{d:'chat on WhatsApp', f:() => { openUrl(wa); return 'opening WhatsApp… ' + a(wa, wa); }},
+    linkedin:{d:'open LinkedIn', f:() => { openUrl(CONFIG.linkedin); return 'opening LinkedIn…'; }},
+    github:{d:'open GitHub', f:() => { openUrl(CONFIG.github); return 'opening GitHub…'; }},
+    cv:{d:'download my CV', f:() => { $('#cvBtn').click(); return 'downloading CV…'; }},
+    open:{d:'open <section>: jump to a section', f:arg => { const s2 = sec(arg); if(!s2) return 'usage: open ' + SECTIONS.map(x => x[0]).join(' | '); document.getElementById(s2[0]).scrollIntoView({behavior: reduce?'auto':'smooth'}); return 'jumping to ' + esc(s2[1]) + '…'; }},
+    theme:{d:'toggle light / dark', f:() => { window.toggleTheme(); return 'theme toggled.'; }},
+    ls:{d:'list files', f:() => CONFIG.terminal.filter(t => t.cmd.startsWith('cat ')).map(t => esc(t.cmd.slice(4))).join('  ')},
+    cat:{d:'cat <file>', f:arg => { const t = CONFIG.terminal.find(x => x.cmd === 'cat ' + arg); return t ? o(esc(t.out)) : `cat: ${esc(arg||'')}: No such file. Try ls`; }},
+    history:{d:'previous commands', f:() => hist.map((h,i) => `${i+1}  ${esc(h)}`).join('\n') || m('empty')},
+    clear:{d:'clear the screen', f:() => { out.innerHTML = ''; return null; }},
+    sudo:{hide:true, d:'', f:() => 'Nice try :) I would rather you just say hello. Type ' + o('contact')}
+  };
+
+  print(m('Type ') + o('help') + m(' to see what you can ask me, or ') + o('contact') + m(' to reach me.'));
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const raw = inp.value.trim(); inp.value = '';
+    if(!raw) return;
+    hist.push(raw); hi = hist.length;
+    print(`<span class="p">$</span> ${esc(raw)}`);
+    const [name, ...rest] = raw.split(/\s+/); const arg = rest.join(' ');
+    const c = C[name.toLowerCase()];
+    if(!c){ print(`command not found: ${esc(name)}. Type ${o('help')}`); return; }
+    const res = c.f(arg);
+    if(res) print(res);
+  });
+  inp.addEventListener('keydown', e => {
+    if(e.key==='ArrowUp'){ e.preventDefault(); if(hi>0){ hi--; inp.value = hist[hi]; } }
+    else if(e.key==='ArrowDown'){ e.preventDefault(); if(hi<hist.length-1){ hi++; inp.value = hist[hi]; } else { hi = hist.length; inp.value = ''; } }
+    else if(e.key==='Tab'){ e.preventDefault(); const v = inp.value.toLowerCase(); if(v && !v.includes(' ')){ const hit = Object.keys(C).find(k => k.startsWith(v) && !C[k].hide); if(hit) inp.value = hit; } }
+    else if(e.key==='l' && e.ctrlKey){ e.preventDefault(); out.innerHTML = ''; }
+  });
+  body.addEventListener('click', e => { if(!e.target.closest('a') && !getSelection().toString()) inp.focus({preventScroll:true}); });
+}
 
 /* ---------- GitHub repos ---------- */
 (async function loadRepos(){
