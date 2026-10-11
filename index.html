@@ -764,9 +764,12 @@ function initShell(){
 (function theme(){
   const root = document.documentElement, btn = $('#themeBtn');
   const saved = safe(() => localStorage.getItem('theme'));
-  const apply = t => { root.dataset.theme = t; $('#themeIcon').innerHTML = ICONS[t==='dark'?'sun':'moon']; $('meta[name=theme-color]').content = t==='dark'?'#070b17':'#f4f6fc'; safe(() => localStorage.setItem('theme',t)); window.dispatchEvent(new Event('themechange')); };
-  apply(saved || "dark");
-  btn.addEventListener('click', () => apply(root.dataset.theme==='dark' ? 'light' : 'dark'));
+  const apply = (t, persist) => { root.dataset.theme = t; $('#themeIcon').innerHTML = ICONS[t==='dark'?'sun':'moon']; $('meta[name=theme-color]').content = t==='dark'?'#070b17':'#f4f6fc'; if(persist) safe(() => localStorage.setItem('theme',t)); window.dispatchEvent(new Event('themechange')); };
+  const mq = matchMedia('(prefers-color-scheme: light)');
+  apply(saved || (mq.matches ? 'light' : 'dark'));
+  // follow the device setting live, unless the visitor picked a theme manually
+  mq.addEventListener?.('change', e => { if(!safe(() => localStorage.getItem('theme'))) apply(e.matches ? 'light' : 'dark'); });
+  btn.addEventListener('click', () => apply(root.dataset.theme==='dark' ? 'light' : 'dark', true));
   window.toggleTheme = () => btn.click();
 })();
 
